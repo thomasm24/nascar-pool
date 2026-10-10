@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NASCAR Pick'em Pool Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS for Excel (.xlsx) parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        
+        <!-- Header -->
+        <header class="flex flex-col lg:flex-row justify-between items-center mb-8 bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-amber-400 tracking-tight flex items-center gap-2">
+                    🏁 NASCAR Pick'em Pool
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">Official Leaderboard & Pick Tracker • 10 Players</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Mode Status Indicator -->
+                <div id="modeBadge" class="bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-600 flex items-center gap-1.5">
+                    👁️ View Only Mode
+                </div>
+
+                <!-- Admin Unlock Button -->
+                <button id="adminBtn" onclick="toggleAdminPrompt()" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-4 py-2 rounded-lg text-sm font-semibold transition">
+                    🔑 Admin Login
+                </button>
+
+                <!-- Admin-Only Actions -->
+                <div id="adminControls" class="hidden flex flex-wrap gap-2">
+                    <label class="bg-emerald-700 hover:bg-emerald-600 px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer transition flex items-center gap-1">
+                        📊 Import Excel / CSV
+                        <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelUpload(event)">
+                    </label>
+                    <button onclick="exportData()" class="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-xs font-semibold text-slate-200">Export</button>
+                    <button onclick="resetToDefaults()" class="bg-rose-900/50 hover:bg-rose-800/60 text-rose-300 border border-rose-700 px-3 py-2 rounded-lg text-xs font-semibold">Reset Pool</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Standings & Stats -->
+            <div class="space-y-6">
+                <!-- Top Winning Pick Banner Card -->
+                <div class="bg-gradient-to-r from-amber-500/10 via-slate-800 to-slate-800 p-5 rounded-2xl border border-amber-500/30 shadow-lg flex items-center justify-between">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wider text-amber-400">🔥 Winningest Pick Number</div>
+                        <div id="topPickDisplay" class="text-2xl font-extrabold text-white mt-1">
+                            --
+                        </div>
+                    </div>
+                    <div class="text-3xl">🎯</div>
+                </div>
+
+                <!-- Leaderboard Card -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h2 class="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        🏆 Leaderboard
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-xs text-slate-400 uppercase bg-slate-900/60">
+                                <tr>
+                                    <th class="p-3">Rank</th>
+                                    <th class="p-3">Player</th>
+                                    <th class="p-3 text-center">Wins</th>
+                                    <th class="p-3 text-center">$200 Bonus</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardBody" class="divide-y divide-slate-700">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Player Wins Chart -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h3 class="text-lg font-bold text-slate-100 mb-4">Player Wins</h3>
+                    <canvas id="winsChart" class="w-full max-h-56"></canvas>
+                </div>
+
+                <!-- Wins by Pick Number Chart -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h3 class="text-lg font-bold text-slate-100 mb-4">Wins by Pick Number</h3>
+                    <canvas id="pickWinsChart" class="w-full max-h-56"></canvas>
+                </div>
+            </div>
+
+            <!-- Right Column: Race Results & Pick Viewer/Editor -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            🏎️ Race Results & Picks
+                        </h2>
+                        <select id="raceSelect" onchange="loadRacePicks()" class="bg-slate-900 text-amber-400 border border-slate-700 font-bold rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 outline-none">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <!-- NASCAR.com Live Widget / Link Banner -->
+                    <div id="nascarWidgetContainer" class="mb-6 bg-gradient-to-r from-red-900/40 via-slate-900 to-slate-900 p-4 rounded-xl border border-red-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">🔴</span>
+                            <div>
+                                <div class="text-xs font-bold uppercase tracking-wider text-red-400">Official NASCAR.com Live Center</div>
+                                <div class="text-sm text-slate-300">View real-time leaderboard, stats & live race feed</div>
+                            </div>
+                        </div>
+                        <div id="nascarLinkButton">
+                            <!-- Rendered dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Admin URL Editor (Visible in Admin Mode) -->
+                    <div id="adminUrlEditor" class="hidden mb-6 bg-slate-900 p-4 rounded-xl border border-slate-700">
+                        <label class="block text-xs font-bold text-amber-400 uppercase mb-1">Edit NASCAR.com Live URL for this Race:</label>
+                        <input type="text" id="raceUrlInput" onchange="updateRaceUrl(this.value)" placeholder="https://www.nascar.com/live-results/nascar-cup-series/..." class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-amber-500 outline-none">
+                    </div>
+
+                    <!-- Race Winner Status Banner -->
+                    <div id="raceWinnerBanner" class="p-4 rounded-xl mb-6 bg-slate-900 border border-slate-700 flex justify-between items-center">
+                        <div>
+                            <span class="text-xs text-slate-400 uppercase font-semibold">Declared Race Winner</span>
+                            <div id="winnerName" class="text-xl font-bold text-slate-200">Pending...</div>
+                        </div>
+                        <div id="bonusBadge" class="hidden bg-amber-500/20 text-amber-300 border border-amber-500/50 text-xs font-bold px-3 py-1.5 rounded-full">
+                            💰 $200 Cash Bonus Race
+                        </div>
+                    </div>
+
+                    <!-- Picks Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-xs text-slate-400 uppercase bg-slate-900/60">
+                                <tr>
+                                    <th class="p-3">Player <span class="text-xs font-normal text-slate-400">(Sorted by Prev. Winner)</span></th>
+                                    <th class="p-3">Pick #</th>
+                                    <th class="p-3 text-center">Status</th>
+                                    <th class="p-3 text-right admin-col hidden">Admin Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="picksTableBody" class="divide-y divide-slate-700">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PIN = "1234";
+        let isAdmin = false;
+
+        const initialRaces = [
+            { id: 1, track: "Daytona 500", bonus: true, winner: "Doug", url: "", picks: {"Trey":2, "Doug":6, "Jason":10, "Eddie B":9, "Thomas":1, "Steve":5, "Nick":3, "Michael":7, "Tiffany":4, "Eddie S":8} },
+            { id: 2, track: "Atlanta 1", bonus: false, winner: "Steve", url: "", picks: {"Doug":6, "Trey":10, "Jason":4, "Eddie B":5, "Thomas":2, "Steve":1, "Nick":8, "Michael":7, "Tiffany":3, "Eddie S":9} },
+            { id: 3, track: "COTA", bonus: false, winner: "Jason", url: "", picks: {"Steve":6, "Doug":9, "Trey":8, "Jason":1, "Eddie B":4, "Thomas":5, "Nick":3, "Michael":7, "Tiffany":10, "Eddie S":2} },
+            { id: 4, track: "Phoenix 1", bonus: false, winner: "Trey", url: "", picks: {"Jason":3, "Steve":6, "Doug":7, "Trey":5, "Eddie B":10, "Thomas":2, "Nick":4, "Michael":8, "Tiffany":1, "Eddie S":9} },
+            { id: 5, track: "Las Vegas 1", bonus: false, winner: "Michael", url: "", picks: {"Trey":7, "Jason":6, "Steve":9, "Doug":5, "Eddie B":8, "Thomas":1, "Nick":10, "Michael":2, "Tiffany":4, "Eddie S":3} },
+            { id: 6, track: "Darlington 1", bonus: false, winner: "Trey", url: "", picks: {"Michael":8, "Trey":1, "Jason":3, "Steve":6, "Doug":10, "Eddie B":4, "Thomas":7, "Nick":2, "Tiffany":5, "Eddie S":9} },
+            { id: 7, track: "Martinsville 1", bonus: false, winner: "Trey", url: "", picks: {"Trey":10, "Michael":5, "Jason":3, "Steve":9, "Doug":4, "Eddie B":6, "Thomas":7, "Nick":8, "Tiffany":1, "Eddie S":2} },
+            { id: 8, track: "Bristol 1", bonus: false, winner: "Steve", url: "", picks: {"Trey":10, "Michael":2, "Jason":1, "Steve":5, "Doug":6, "Eddie B":4, "Thomas":9, "Nick":3, "Tiffany":7, "Eddie S":8} },
+            { id: 9, track: "Kansas 1", bonus: false, winner: "Eddie B", url: "", picks: {"Steve":3, "Trey":8, "Michael":2, "Jason":7, "Doug":9, "Eddie B":1, "Thomas":6, "Nick":4, "Tiffany":5, "Eddie S":10} },
+            { id: 10, track: "Dega 1", bonus: true, winner: "Eddie B", url: "", picks: {"Eddie B":2, "Steve":4, "Trey":8, "Michael":10, "Jason":3, "Doug":1, "Thomas":9, "Nick":5, "Tiffany":6, "Eddie S":7} },
+            { id: 11, track: "Texas", bonus: false, winner: "Thomas", url: "", picks: {"Eddie B":6, "Steve":8, "Trey":10, "Michael":9, "Jason":1, "Doug":7, "Thomas":4, "Nick":2, "Tiffany":5, "Eddie S":3} },
+            { id: 12, track: "Glen", bonus: false, winner: "Thomas", url: "", picks: {"Thomas":1, "Eddie B":2, "Steve":10, "Trey":9, "Michael":3, "Jason":8, "Doug":4, "Nick":5, "Tiffany":6, "Eddie S":7} },
+            { id: 13, track: "All Star", bonus: false, winner: "Doug", url: "", picks: {"Thomas":6, "Eddie B":10, "Steve":9, "Trey":3, "Michael":7, "Jason":8, "Doug":1, "Nick":5, "Tiffany":4, "Eddie S":2} },
+            { id: 14, track: "Coke 600", bonus: false, winner: "Jason", url: "", picks: {"Doug":2, "Thomas":3, "Eddie B":9, "Steve":8, "Trey":1, "Michael":5, "Jason":4, "Nick":10, "Tiffany":7, "Eddie S":6} },
+            { id: 15, track: "Nashville", bonus: false, winner: "Eddie S", url: "", picks: {"Jason":6, "Doug":3, "Thomas":10, "Eddie B":8, "Steve":4, "Trey":7, "Michael":9, "Nick":2, "Tiffany":5, "Eddie S":1} },
+            { id: 16, track: "Michigan", bonus: false, winner: "Tiffany", url: "", picks: {"Eddie S":10, "Jason":7, "Doug":6, "Thomas":5, "Eddie B":3, "Steve":2, "Trey":4, "Michael":9, "Nick":8, "Tiffany":1} },
+            { id: 17, track: "Pocono", bonus: false, winner: "Thomas", url: "", picks: {"Tiffany":2, "Eddie S":7, "Jason":3, "Doug":4, "Thomas":1, "Eddie B":8, "Steve":5, "Trey":10, "Michael":9, "Nick":6} },
+            { id: 18, track: "San Diego", bonus: false, winner: "Eddie S", url: "", picks: {"Thomas":1, "Tiffany":7, "Eddie S":3, "Jason":4, "Doug":9, "Eddie B":6, "Steve":5, "Trey":8, "Michael":2, "Nick":10} },
+            { id: 19, track: "Sonoma", bonus: false, winner: "Trey", url: "", picks: {"Eddie S":9, "Thomas":5, "Tiffany":8, "Jason":4, "Doug":3, "Eddie B":1, "Steve":7, "Trey":6, "Michael":10, "Nick":2} },
+            { id: 20, track: "Chicagoland", bonus: false, winner: "Doug", url: "", picks: {"Trey":5, "Eddie S":4, "Thomas":1, "Tiffany":3, "Jason":10, "Doug":7, "Eddie B":6, "Steve":9, "Michael":8, "Nick":2} },
+            { id: 21, track: "Atlanta 2", bonus: true, winner: "Thomas", url: "", picks: {"Doug":5, "Trey":6, "Eddie S":2, "Thomas":1, "Tiffany":7, "Jason":4, "Eddie B":8, "Steve":3, "Michael":9, "Nick":10} },
+            { id: 22, track: "North Wilkesboro", bonus: false, winner: "Steve", url: "", picks: {"Thomas":4, "Doug":6, "Trey":10, "Eddie S":3, "Tiffany":8, "Jason":5, "Eddie B":7, "Steve":1, "Michael":2, "Nick":9} },
+            { id: 23, track: "Indy", bonus: false, winner: "Eddie S", url: "", picks: {"Steve":5, "Thomas":6, "Doug":8, "Trey":1, "Eddie S":7, "Tiffany":9, "Jason":3, "Eddie B":2, "Michael":4, "Nick":10} },
+            { id: 24, track: "Iowa", bonus: false, winner: "Thomas", url: "", picks: {"Eddie S":5, "Steve":8, "Thomas":6, "Doug":2, "Trey":4, "Tiffany":9, "Jason":7, "Eddie B":3, "Michael":1, "Nick":10} },
+            { id: 25, track: "Richmond", bonus: false, winner: "Eddie B", url: "", picks: {"Thomas":1, "Eddie S":5, "Steve":7, "Doug":2, "Trey":3, "Tiffany":8, "Jason":9, "Eddie B":10, "Michael":6, "Nick":4} },
+            { id: 26, track: "NHMS", bonus: false, winner: "Nick", url: "", picks: {"Eddie B":7, "Thomas":1, "Eddie S":6, "Steve":2, "Doug":10, "Trey":3, "Tiffany":4, "Jason":5, "Michael":9, "Nick":8} },
+            { id: 27, track: "Daytona 2", bonus: false, winner: "Steve", url: "", picks: {"Nick":6, "Eddie B":7, "Thomas":1, "Eddie S":10, "Steve":4, "Doug":9, "Trey":5, "Tiffany":8, "Jason":2, "Michael":3} },
+            { id: 28, track: "Darlington 2", bonus: false, winner: "Michael", url: "", picks: {"Steve":8, "Nick":4, "Eddie B":7, "Thomas":2, "Eddie S":5, "Doug":3, "Trey":6, "Tiffany":9, "Jason":10, "Michael":1} },
+            { id: 29, track: "Gateway", bonus: false, winner: "Tiffany", url: "", picks: {"Michael":1, "Steve":8, "Nick":6, "Eddie B":10, "Thomas":9, "Eddie S":4, "Doug":7, "Trey":5, "Tiffany":2, "Jason":3} },
+            { id: 30, track: "Bristol 2", bonus: false, winner: "Eddie B", url: "", picks: {"Tiffany":1, "Michael":6, "Steve":5, "Nick":4, "Eddie B":2, "Thomas":9, "Eddie S":10, "Doug":7, "Trey":8, "Jason":3} },
+            { id: 31, track: "Kansas 2", bonus: false, winner: "Eddie S", url: "", picks: {"Eddie B":7, "Tiffany":10, "Michael":3, "Steve":9, "Nick":8, "Thomas":1, "Eddie S":2, "Doug":6, "Trey":4, "Jason":5} },
+            { id: 32, track: "Vegas 2", bonus: false, winner: "Thomas", url: "https://www.nascar.com/live-results/nascar-cup-series/2026-south-point-400/", picks: {"Eddie S":10, "Eddie B":8, "Tiffany":7, "Michael":9, "Steve":5, "Nick":3, "Thomas":4, "Doug":1, "Trey":6, "Jason":2} },
+            { id: 33, track: "Charlotte", bonus: false, winner: null, url: "", picks: {} },
+            { id: 34, track: "Phoenix 2", bonus: false, winner: null, url: "", picks: {} },
+            { id: 35, track: "Dega 2", bonus: false, winner: null, url: "", picks: {} },
+            { id: 36, track: "Martinsville 2", bonus: false, winner: null, url: "", picks: {} },
+            { id: 37, track: "Homestead", bonus: false, winner: null, url: "", picks: {} }
+        ];
+
+        let races = JSON.parse(localStorage.getItem('nascar_races')) || initialRaces;
+        let chartInstance = null;
+        let pickChartInstance = null;
+
+        function toggleAdminPrompt() {
+            if (isAdmin) {
+                isAdmin = false;
+                updateAdminUI();
+            } else {
+                const pin = prompt("Enter Admin Passcode:");
+                if (pin === ADMIN_PIN) {
+                    isAdmin = true;
+                    updateAdminUI();
+                } else if (pin !== null) {
+                    alert("Incorrect PIN!");
+                }
+            }
+        }
+
+        function updateAdminUI() {
+            const badge = document.getElementById('modeBadge');
+            const adminBtn = document.getElementById('adminBtn');
+            const adminControls = document.getElementById('adminControls');
+            const adminCols = document.querySelectorAll('.admin-col');
+            const adminUrlEditor = document.getElementById('adminUrlEditor');
+
+            if (isAdmin) {
+                badge.className = "bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5";
+                badge.innerHTML = "🔓 Admin Mode Active";
+                adminBtn.textContent = "Lock Admin";
+                adminControls.classList.remove('hidden');
+                adminUrlEditor.classList.remove('hidden');
+                adminCols.forEach(col => col.classList.remove('hidden'));
+            } else {
+                badge.className = "bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-600 flex items-center gap-1.5";
+                badge.innerHTML = "👁️ View Only Mode";
+                adminBtn.textContent = "🔑 Admin Login";
+                adminControls.classList.add('hidden');
+                adminUrlEditor.classList.add('hidden');
+                adminCols.forEach(col => col.classList.add('hidden'));
+            }
+            loadRacePicks();
+        }
+
+        function saveState() {
+            localStorage.setItem('nascar_races', JSON.stringify(races));
+            updateDashboard();
+        }
+
+        function resetToDefaults() {
+            if (confirm("Reset pool data back to default settings?")) {
+                races = JSON.parse(JSON.stringify(initialRaces));
+                saveState();
+            }
+        }
+
+        function calculateStandings() {
+            const players = ["Thomas", "Eddie B", "Eddie S", "Steve", "Trey", "Doug", "Jason", "Michael", "Tiffany", "Nick"];
+            const standings = players.map(name => ({ name, wins: 0, bonusWins: 0 }));
+
+            races.forEach(race => {
+                if (race.winner) {
+                    const p = standings.find(s => s.name === race.winner);
+                    if (p) {
+                        p.wins++;
+                        if (race.bonus) p.bonusWins++;
+                    }
+                }
+            });
+
+            return standings.sort((a, b) => b.wins - a.wins || b.bonusWins - a.bonusWins);
+        }
+
+        function calculatePickNumberWins() {
+            const pickCounts = {};
+            races.forEach(race => {
+                if (race.winner && race.picks && race.picks[race.winner] !== undefined) {
+                    const pickNum = race.picks[race.winner];
+                    pickCounts[pickNum] = (pickCounts[pickNum] || 0) + 1;
+                }
+            });
+
+            let topPicks = [];
+            let maxWins = 0;
+
+            Object.entries(pickCounts).forEach(([pick, wins]) => {
+                if (wins > maxWins) {
+                    maxWins = wins;
+                    topPicks = [pick];
+                } else if (wins === maxWins && wins > 0) {
+                    topPicks.push(pick);
+                }
+            });
+
+            return { pickCounts, topPicks, maxWins };
+        }
+
+        function updateDashboard() {
+            const standings = calculateStandings();
+            
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = standings.map((s, idx) => `
+                <tr class="hover:bg-slate-700/50">
+                    <td class="p-3 font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</td>
+                    <td class="p-3 font-semibold text-slate-200">${s.name}</td>
+                    <td class="p-3 text-center"><span class="bg-amber-500/20 text-amber-300 font-bold px-2.5 py-1 rounded-full border border-amber-500/30">${s.wins}</span></td>
+                    <td class="p-3 text-center text-slate-300">${s.bonusWins > 0 ? `💰 ${s.bonusWins} ($${s.bonusWins * 200})` : '-'}</td>
+                </tr>
+            `).join('');
+
+            const select = document.getElementById('raceSelect');
+            if (select.children.length === 0) {
+                select.innerHTML = races.map(r => `<option value="${r.id}">${r.track} ${r.bonus ? '💰' : ''}</option>`).join('');
+            }
+
+            const { pickCounts, topPicks, maxWins } = calculatePickNumberWins();
+            const topPickEl = document.getElementById('topPickDisplay');
+            if (topPicks.length > 0) {
+                const formattedPicks = topPicks.map(p => `Pick #${p}`).join(' & ');
+                topPickEl.innerHTML = `<span class="text-amber-400 font-extrabold">${formattedPicks}</span> <span class="text-sm text-slate-300 font-normal">(${maxWins} ${maxWins === 1 ? 'Win' : 'Wins'})</span>`;
+            } else {
+                topPickEl.innerHTML = `<span class="text-slate-400 text-sm">No winners declared yet</span>`;
+            }
+
+            renderCharts(standings, pickCounts);
+            loadRacePicks();
+        }
+
+        function loadRacePicks() {
+            const raceId = parseInt(document.getElementById('raceSelect').value);
+            const raceIndex = races.findIndex(r => r.id === raceId);
+            const race = races[raceIndex];
+            
+            document.getElementById('winnerName').textContent = race.winner ? `${race.winner} 🏆` : 'Pending / Not Declared';
+            document.getElementById('winnerName').className = race.winner ? 'text-xl font-bold text-amber-400' : 'text-xl font-bold text-slate-400';
+            
+            const bonusBadge = document.getElementById('bonusBadge');
+            if (race.bonus) bonusBadge.classList.remove('hidden');
+            else bonusBadge.classList.add('hidden');
+
+            // NASCAR Link Button Widget
+            const linkBtnContainer = document.getElementById('nascarLinkButton');
+            if (race.url && race.url.trim() !== "") {
+                linkBtnContainer.innerHTML = `<a href="${race.url}" target="_blank" class="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow transition flex items-center gap-1.5"><span>🔗</span> Open Live Leaderboard</a>`;
+            } else {
+                linkBtnContainer.innerHTML = `<span class="text-xs text-slate-500 italic">No link added for this race</span>`;
+            }
+
+            // Admin URL input value
+            document.getElementById('raceUrlInput').value = race.url || '';
+
+            const basePlayers = ["Thomas", "Eddie B", "Eddie S", "Steve", "Trey", "Doug", "Jason", "Michael", "Tiffany", "Nick"];
+            let players = [...basePlayers];
+
+            if (raceIndex > 0) {
+                const prevRace = races[raceIndex - 1];
+                if (prevRace && prevRace.winner) {
+                    const prevWinner = prevRace.winner;
+                    players = [prevWinner, ...basePlayers.filter(p => p !== prevWinner)];
+                }
+            }
+
+            // Render Picks Table
+            const tbody = document.getElementById('picksTableBody');
+            tbody.innerHTML = players.map(player => {
+                const pickNum = race.picks[player] !== undefined ? race.picks[player] : '';
+                const isWinner = race.winner === player;
+                
+                const pickCellHTML = isAdmin 
+                    ? `<input type="number" min="1" max="40" value="${pickNum}" onchange="updatePlayerPick('${player}', this.value)" class="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-amber-400 font-bold font-mono focus:border-amber-500 outline-none">`
+                    : `<span class="font-mono font-bold text-slate-300">${pickNum !== '' ? pickNum : '-'}</span>`;
+
+                return `
+                    <tr class="${isWinner ? 'bg-amber-500/10 border-l-4 border-amber-500' : 'hover:bg-slate-700/50'}">
+                        <td class="p-3 font-medium ${isWinner ? 'text-amber-300 font-bold' : 'text-slate-200'}">${player}</td>
+                        <td class="p-3">${pickCellHTML}</td>
+                        <td class="p-3 text-center">
+                            ${isWinner ? '<span class="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded">WINNER</span>' : '<span class="text-slate-500">-</span>'}
+                        </td>
+                        <td class="p-3 text-right admin-col ${isAdmin ? '' : 'hidden'}">
+                            <button onclick="setWinner('${player}')" class="text-xs bg-slate-700 hover:bg-amber-600 hover:text-white px-3 py-1 rounded text-slate-300 transition">Set Winner</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updatePlayerPick(player, value) {
+            if (!isAdmin) return;
+            const raceId = parseInt(document.getElementById('raceSelect').value);
+            const race = races.find(r => r.id === raceId);
+            if (value === "") {
+                delete race.picks[player];
+            } else {
+                race.picks[player] = parseInt(value);
+            }
+            saveState();
+        }
+
+        function updateRaceUrl(value) {
+            if (!isAdmin) return;
+            const raceId = parseInt(document.getElementById('raceSelect').value);
+            const race = races.find(r => r.id === raceId);
+            race.url = value.trim();
+            saveState();
+        }
+
+        function setWinner(player) {
+            if (!isAdmin) return;
+            const raceId = parseInt(document.getElementById('raceSelect').value);
+            const race = races.find(r => r.id === raceId);
+            race.winner = player;
+            saveState();
+        }
+
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                let importedCount = 0;
+
+                jsonRows.forEach((row) => {
+                    if (!row || row.length < 3) return;
+                    const trackName = String(row[0]).trim();
+                    const playerName = String(row[1]).trim();
+                    const pickNum = parseInt(row[2]);
+                    const winnerFlag = row[3] ? String(row[3]).trim().toUpperCase() : "";
+
+                    if (trackName && playerName && !isNaN(pickNum)) {
+                        const race = races.find(r => r.track.toLowerCase().replace(/\s+/g, '') === trackName.toLowerCase().replace(/\s+/g, ''));
+                        if (race) {
+                            race.picks[playerName] = pickNum;
+                            if (winnerFlag === 'W' || winnerFlag === 'WINNER') {
+                                race.winner = playerName;
+                            }
+                            importedCount++;
+                        }
+                    }
+                });
+
+                saveState();
+                alert(`Successfully imported/updated ${importedCount} picks from Excel!`);
+                event.target.value = "";
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderCharts(standings, pickCounts) {
+            const ctx1 = document.getElementById('winsChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: standings.map(s => s.name),
+                    datasets: [{
+                        label: 'Total Wins',
+                        data: standings.map(s => s.wins),
+                        backgroundColor: '#f59e0b',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { precision: 0, color: '#94a3b8' }, grid: { color: '#334155' } },
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    }
+                }
+            });
+
+            const ctx2 = document.getElementById('pickWinsChart').getContext('2d');
+            if (pickChartInstance) pickChartInstance.destroy();
+
+            const pickLabels = Array.from({length: 10}, (_, i) => i + 1);
+            const pickData = pickLabels.map(p => pickCounts[p] || 0);
+
+            pickChartInstance = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: pickLabels.map(p => `#${p}`),
+                    datasets: [{
+                        label: 'Race Wins',
+                        data: pickData,
+                        backgroundColor: '#10b981',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { precision: 0, color: '#94a3b8' }, grid: { color: '#334155' } },
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(races, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'nascar_pool_data.json';
+            a.click();
+        }
+
+        window.onload = updateDashboard;
+    </script>
+</body>
+</html>
